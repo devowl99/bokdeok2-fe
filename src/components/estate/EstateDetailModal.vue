@@ -56,10 +56,10 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { MOCK_ESTATES } from '@/api/mockData'
 import { useScrapStore } from '@/stores/scrap'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/api'
+import { mapHouseDtoToEstate } from '@/utils/estateMapper'
 
 const props = defineProps({
   isOpen: {
@@ -67,7 +67,7 @@ const props = defineProps({
     default: false
   },
   estateId: {
-    type: Number,
+    type: [String, Number],
     default: null
   }
 })
@@ -77,6 +77,7 @@ const emit = defineEmits(['close'])
 const scrapStore = useScrapStore()
 const authStore = useAuthStore()
 const estate = ref(null)
+const isLoading = ref(false)
 
 const isScrapped = computed(() => {
   if (!estate.value) return false
@@ -108,14 +109,32 @@ const closeModal = () => {
 watch(() => props.estateId, async (newId) => {
   if (newId && props.isOpen) {
     estate.value = null
-    // TODO: 실제 API 호출
-    // const res = await api.get(`/estate/${newId}`)
-    // estate.value = res.data.data
+    isLoading.value = true
     
-    // Mock: 지연 후 데이터 로드
-    setTimeout(() => {
-      estate.value = MOCK_ESTATES.find(e => e.id === newId)
-    }, 300)
+    try {
+      const aptSeq = String(newId)
+      
+      // 백엔드: GET /api/v1/houses/{aptSeq}
+      const houseResponse = await api.get(`/houses/${aptSeq}`)
+      const houseDto = houseResponse.data.data || houseResponse.data
+      
+      // 거래 내역 조회
+      let deals = []
+      try {
+        const dealsResponse = await api.get(`/houses/${aptSeq}/deals`)
+        deals = dealsResponse.data.data || dealsResponse.data || []
+      } catch (dealsError) {
+        console.warn('거래 내역 조회 실패:', dealsError)
+      }
+      
+      // 백엔드 DTO를 프론트엔드 형식으로 변환
+      estate.value = mapHouseDtoToEstate(houseDto, deals)
+    } catch (error) {
+      console.error('매물 상세 조회 실패:', error)
+      estate.value = null
+    } finally {
+      isLoading.value = false
+    }
   }
 }, { immediate: true })
 

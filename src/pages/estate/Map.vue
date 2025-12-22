@@ -9,6 +9,7 @@
           <span class="count">{{ estates.length }}건</span>
         </div>
         <div class="estate-list">
+          <div v-if="isLoading" class="loading-message">매물을 불러오는 중...</div>
           <EstateCard
             v-for="estate in estates"
             :key="estate.id"
@@ -17,6 +18,9 @@
             class="map-estate-item"
             @click="goToDetail(estate.id)"
           />
+          <div v-if="!isLoading && estates.length === 0" class="empty-message">
+            매물이 없습니다.
+          </div>
         </div>
       </aside>
 
@@ -46,24 +50,44 @@ import KakaoMap from '@/components/map/KakaoMap.vue'
 import FloatingAIChat from '@/components/common/FloatingAIChat.vue'
 import EstateCard from '@/components/estate/EstateCard.vue'
 import EstateDetailModal from '@/components/estate/EstateDetailModal.vue'
-import { MOCK_ESTATES } from '@/api/mockData'
 import { ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useScrapStore } from '@/stores/scrap'
 import api from '@/api'
+import { mapHouseDtosToEstates } from '@/utils/estateMapper'
 
 const route = useRoute()
 const router = useRouter()
 const scrapStore = useScrapStore()
-const estates = ref(MOCK_ESTATES)
+const estates = ref([])
 const mapRef = ref(null)
 const isModalOpen = ref(false)
 const selectedEstateId = ref(null)
+const isLoading = ref(false)
 
-// Function to fetch AI recommendations
+// 매물 목록 조회
+const fetchEstates = async (params = {}) => {
+  isLoading.value = true
+  try {
+    // 백엔드: GET /api/v1/houses (검색 파라미터 지원)
+    const response = await api.get('/houses', { params })
+    const houseDtos = response.data.data || response.data
+    
+    // 백엔드 DTO를 프론트엔드 형식으로 변환
+    estates.value = mapHouseDtosToEstates(Array.isArray(houseDtos) ? houseDtos : [])
+  } catch (error) {
+    console.error('매물 목록 조회 실패:', error)
+    estates.value = []
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// Function to fetch AI recommendations (임시로 일반 검색 사용)
 const fetchRecommendations = async (query) => {
-  const res = await api.post('/llm/recommend', { query })
-  estates.value = res.data.data.estates
+  // TODO: LLM 추천 API 연결 시 수정
+  // 현재는 쿼리를 주소 검색으로 사용
+  await fetchEstates({ dongName: query })
 }
 
 // Watch for query changes (e.g. searching from AIChat)
@@ -71,13 +95,15 @@ watch(() => route.query.q, async (newQuery) => {
   if (newQuery) {
     await fetchRecommendations(newQuery)
   } else {
-    estates.value = MOCK_ESTATES
+    await fetchEstates()
   }
-}, { immediate: true })
+}, { immediate: false })
 
 // Load scraps on mount
-onMounted(() => {
-  scrapStore.loadScraps()
+onMounted(async () => {
+  await scrapStore.loadScraps()
+  // 초기 매물 목록 로드
+  await fetchEstates()
 })
 
 const formatPrice = (price) => {

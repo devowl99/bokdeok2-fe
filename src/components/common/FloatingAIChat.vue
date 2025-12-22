@@ -62,12 +62,21 @@ const sendMessage = async () => {
   scrollToBottom()
 
   try {
-    const res = await api.post('/llm/chat', { message: userText })
-    const reply = res.data.data.reply
+    // 백엔드: POST /api/v1/llm
+    // 요청: { prompt: "..." } (LlmRequestDto)
+    // 응답: String (직접 문자열 반환)
+    const res = await api.post('/llm', { 
+      prompt: userText,
+      type: 'FIND_HOUSE' // 또는 'SCENERY'
+    })
+    
+    // 백엔드는 직접 문자열을 반환하므로, 응답 인터셉터가 { success: true, data: "..." } 형식으로 변환
+    const reply = res.data.data || res.data || '응답을 받지 못했습니다.'
     messages.value.push({ role: 'assistant', text: reply })
   } catch (error) {
     console.error(error)
-    messages.value.push({ role: 'assistant', text: '죄송합니다. 오류가 발생했어요. 😢' })
+    const errorMessage = error.response?.data?.message || error.response?.data?.data || '죄송합니다. 오류가 발생했어요. 😢'
+    messages.value.push({ role: 'assistant', text: errorMessage })
   } finally {
     isProcessing.value = false
     scrollToBottom()

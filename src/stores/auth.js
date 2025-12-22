@@ -17,21 +17,48 @@ export const useAuthStore = defineStore('auth', () => {
 
     const login = async (email, password) => {
         try {
-            // API call (intercepted by Mock for now)
+            // 백엔드: /api/v1/auth/login (POST)
+            // 요청: { email, password }
+            // 응답: { accessToken: "..." }
             const response = await api.post('/auth/login', { email, password })
+            
+            // 백엔드는 { accessToken: "..." } 형식으로 반환
+            // 응답 인터셉터가 { success: true, data: { accessToken: "..." } } 형식으로 변환함
+            const accessToken = response.data.data?.accessToken || response.data.data
+            
+            if (!accessToken) {
+                throw new Error('로그인 토큰을 받지 못했습니다.')
+            }
 
-            const { token: accessToken, user: userData } = response.data.data
-
-            // Update state
+            // 토큰 저장
             token.value = accessToken
-            user.value = userData
-
-            // Persist to storage
             localStorage.setItem('accessToken', accessToken)
-            localStorage.setItem('user', JSON.stringify(userData))
-
+            
             // Default header for future requests
             api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`
+
+            // 로그인 후 사용자 정보 조회
+            try {
+                const profileResponse = await api.get('/user/profile')
+                const userData = profileResponse.data.data || profileResponse.data
+                
+                // userId를 id로 매핑 (프론트엔드에서 id 사용)
+                const mappedUser = {
+                    id: userData.userId,
+                    userId: userData.userId,
+                    email: userData.email,
+                    nickname: userData.nickname,
+                    phone: userData.phone
+                }
+                
+                user.value = mappedUser
+                localStorage.setItem('user', JSON.stringify(mappedUser))
+            } catch (profileError) {
+                console.warn('프로필 조회 실패, 이메일만 저장:', profileError)
+                // 프로필 조회 실패해도 이메일만으로 계속 진행
+                user.value = { email, id: null }
+                localStorage.setItem('user', JSON.stringify({ email, id: null }))
+            }
 
             // Load user's scraps after login
             const scrapStore = useScrapStore()
@@ -40,17 +67,26 @@ export const useAuthStore = defineStore('auth', () => {
             return true
         } catch (error) {
             console.error('Login failed:', error)
-            throw error
+            const errorMessage = error.response?.data?.message || error.response?.data?.data || error.message || '로그인에 실패했습니다.'
+            throw new Error(errorMessage)
         }
     }
 
     const register = async (formData) => {
         try {
-            await api.post('/auth/register', formData)
+            // 백엔드: /api/v1/auth/signup (POST)
+            // 요청: { email, password, nickname }
+            const response = await api.post('/auth/signup', {
+                email: formData.email,
+                password: formData.password,
+                nickname: formData.nickname
+            })
             return true
         } catch (error) {
             console.error('Registration failed:', error)
-            throw error
+            // 백엔드가 문자열로 에러 메시지를 반환할 수 있음
+            const errorMessage = error.response?.data?.message || error.response?.data?.data || '회원가입에 실패했습니다.'
+            throw new Error(errorMessage)
         }
     }
 

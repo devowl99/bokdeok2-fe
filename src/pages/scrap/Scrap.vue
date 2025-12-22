@@ -10,7 +10,11 @@
         <p>스크랩한 매물을 한눈에 모아보세요.</p>
       </div>
 
-      <div v-if="scraps.length > 0" class="scrap-grid">
+      <div v-if="isLoading" class="loading-state">
+        <p>스크랩한 매물을 불러오는 중...</p>
+      </div>
+
+      <div v-else-if="scraps.length > 0" class="scrap-grid">
         <EstateCard
           v-for="estate in scraps"
           :key="estate.id"
@@ -34,27 +38,56 @@
 import Header from '@/components/layout/Header.vue'
 import EstateCard from '@/components/estate/EstateCard.vue'
 import { useScrapStore } from '@/stores/scrap'
-import { computed, onMounted } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-
-import { MOCK_ESTATES } from '@/api/mockData'
+import api from '@/api'
+import { mapHouseDtosToEstates } from '@/utils/estateMapper'
 
 const scrapStore = useScrapStore()
+const authStore = useAuthStore()
 const router = useRouter()
+const scraps = ref([])
+const isLoading = ref(false)
 
-// 스크랩된 ID를 실제 매물 데이터로 변환
-const scraps = computed(() => {
-  const scrapIds = Array.from(scrapStore.scraps)
-  return MOCK_ESTATES.filter(estate => scrapIds.includes(estate.id))
-})
+// 스크랩된 매물 데이터 조회
+const loadScrappedEstates = async () => {
+  if (!authStore.isAuthenticated || !authStore.user) {
+    scraps.value = []
+    return
+  }
+
+  const userId = authStore.user?.userId || authStore.user?.id
+  if (!userId) {
+    scraps.value = []
+    return
+  }
+
+  isLoading.value = true
+  try {
+    // 백엔드: GET /api/v1/houses/scraps?userId=...
+    const response = await api.get('/houses/scraps', { params: { userId } })
+    const houseDtos = response.data.data || response.data || []
+    
+    // 백엔드 DTO를 프론트엔드 형식으로 변환
+    scraps.value = mapHouseDtosToEstates(Array.isArray(houseDtos) ? houseDtos : [])
+  } catch (error) {
+    console.error('스크랩 매물 조회 실패:', error)
+    scraps.value = []
+  } finally {
+    isLoading.value = false
+  }
+}
 
 const goToDetail = (id) => {
   router.push(`/estate/${id}`)
 }
 
-onMounted(() => {
-  scrapStore.loadScraps()
+onMounted(async () => {
+  await scrapStore.loadScraps()
+  await loadScrappedEstates()
 })
+
 </script>
 
 <style scoped>

@@ -14,7 +14,7 @@ export const useScrapStore = defineStore('scrap', () => {
     // Get storage key for current user
     const getStorageKey = () => {
         const authStore = useAuthStore()
-        const userId = authStore.user?.id
+        const userId = authStore.user?.userId || authStore.user?.id
         if (!userId) return null
         return `scraps_${userId}`
     }
@@ -27,6 +27,13 @@ export const useScrapStore = defineStore('scrap', () => {
             return
         }
 
+        const userId = authStore.user?.userId || authStore.user?.id
+        if (!userId) {
+            console.warn('사용자 ID가 없어 스크랩을 불러올 수 없습니다.')
+            scraps.value.clear()
+            return
+        }
+
         const storageKey = getStorageKey()
         if (!storageKey) return
 
@@ -35,24 +42,24 @@ export const useScrapStore = defineStore('scrap', () => {
         scraps.value.clear()
         saved.forEach(id => scraps.value.add(id))
 
-        // 백엔드 연결 시: API에서 사용자의 스크랩 목록 가져오기 (동기화)
+        // 백엔드 연결: API에서 사용자의 스크랩 목록 가져오기
         try {
-            // GET /api/v1/scrap - JWT 토큰이 자동으로 헤더에 포함됨
-            const res = await api.get('/scrap')
-            const scrapIds = res.data.data || [] // 백엔드 응답 형식에 맞게 조정
+            // 백엔드: GET /api/v1/houses/scraps?userId=...
+            // TODO: 백엔드에서 JWT 토큰에서 userId를 추출하도록 수정 필요
+            const res = await api.get('/houses/scraps', { params: { userId } })
+            const houseList = res.data.data || res.data || []
             
-            // API 응답이 있고 배열이면 적용 (빈 배열도 유효한 응답)
-            if (Array.isArray(scrapIds)) {
+            // 백엔드는 HouseInfoDto 배열을 반환하므로 aptSeq를 추출
+            if (Array.isArray(houseList)) {
+                const scrapIds = houseList.map(house => house.aptSeq || house.id).filter(Boolean)
                 scraps.value.clear()
                 scrapIds.forEach(id => scraps.value.add(id))
-                // localStorage도 백엔드 데이터로 동기화 (백엔드가 source of truth)
+                // localStorage도 백엔드 데이터로 동기화
                 localStorage.setItem(storageKey, JSON.stringify(scrapIds))
             }
-            // API 응답이 없거나 유효하지 않으면 localStorage 데이터 유지
         } catch (error) {
-            // 백엔드 연결 전 또는 API 호출 실패: localStorage 데이터 사용 (이미 위에서 로드됨)
-            console.warn('API 호출 실패, localStorage 데이터 사용:', error)
-            // localStorage 데이터는 이미 위에서 로드했으므로 그대로 유지
+            // API 호출 실패: localStorage 데이터 사용 (이미 위에서 로드됨)
+            console.warn('스크랩 API 호출 실패, localStorage 데이터 사용:', error)
         }
     }
 
@@ -60,6 +67,12 @@ export const useScrapStore = defineStore('scrap', () => {
         const authStore = useAuthStore()
         if (!authStore.isAuthenticated) {
             alert('로그인이 필요합니다.')
+            return false
+        }
+
+        const userId = authStore.user?.userId || authStore.user?.id
+        if (!userId) {
+            alert('사용자 정보를 찾을 수 없습니다.')
             return false
         }
 
@@ -71,27 +84,38 @@ export const useScrapStore = defineStore('scrap', () => {
             scraps.value.add(estateId)
         }
 
-        // localStorage에 즉시 저장 (백엔드 연결 전/후 모두 동작)
+        // localStorage에 즉시 저장
         const storageKey = getStorageKey()
         if (storageKey) {
             localStorage.setItem(storageKey, JSON.stringify([...scraps.value]))
         }
 
-        // 백엔드 API 호출 시도 (실패해도 localStorage에 이미 저장됨)
+        // 백엔드 API 호출
         try {
-            if (wasScrapped) {
-                // DELETE /api/v1/scrap/{id} - JWT 토큰이 자동으로 헤더에 포함됨
-                await api.delete(`/scrap/${estateId}`)
-            } else {
-                // POST /api/v1/scrap/{id} - JWT 토큰이 자동으로 헤더에 포함됨
-                await api.post(`/scrap/${estateId}`)
-            }
+            // 백엔드: POST /api/v1/houses/{aptSeq}/scrap?userId=...
+            // TODO: 백엔드에서 JWT 토큰에서 userId를 추출하도록 수정 필요
+            // 스크랩 추가/삭제는 모두 POST로 처리 (백엔드에서 토글 처리)
+            await api.post(`/houses/${estateId}/scrap`, null, { 
+                params: { userId } 
+            })
             return true
         } catch (error) {
-            console.warn('API 호출 실패, localStorage에만 저장됨:', error)
-            // API 호출 실패해도 localStorage에는 이미 저장되어 있으므로 성공으로 처리
+            console.warn('스크랩 API 호출 실패:', error)
+            // API 호출 실패 시 이전 상태로 롤백
+            if (wasScrapped) {
+                scraps.value.add(estateId)
+            } else {
+                scraps.value.delete(estateId)
+            }
+            if (storageKey) {
+                localStorage.setItem(storageKey, JSON.stringify([...scraps.value]))
+            }
+            
             // 401 에러는 interceptor에서 처리됨
-            return true
+            if (error.response?.status !== 401) {
+                alert('스크랩 처리에 실패했습니다. 다시 시도해주세요.')
+            }
+            return false
         }
     }
 

@@ -64,7 +64,8 @@ const handleLogin = async () => {
     await authStore.login(email.value, password.value)
     router.push('/')
   } catch (error) {
-    alert('로그인 실패: 이메일 또는 비밀번호를 확인해주세요.')
+    const errorMessage = error.message || '로그인 실패: 이메일 또는 비밀번호를 확인해주세요.'
+    alert(errorMessage)
   } finally {
     isLoading.value = false
   }

@@ -54,15 +54,17 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import Header from '@/components/layout/Header.vue'
-import { MOCK_ESTATES } from '@/api/mockData'
 import { useScrapStore } from '@/stores/scrap'
 import { useAuthStore } from '@/stores/auth'
+import api from '@/api'
+import { mapHouseDtoToEstate } from '@/utils/estateMapper'
 
 const route = useRoute()
 const scrapStore = useScrapStore()
 const authStore = useAuthStore()
 
 const estate = ref(null)
+const isLoading = ref(false)
 
 // Use store for scrap state
 const isScrapped = computed(() => {
@@ -88,11 +90,31 @@ const toggleScrap = async () => {
 }
 
 onMounted(async () => {
-  const id = parseInt(route.params.id)
-  // Mock API Call simulation
-  setTimeout(() => {
-    estate.value = MOCK_ESTATES.find(e => e.id === id)
-  }, 300)
+  const aptSeq = route.params.id // aptSeq를 파라미터로 사용
+  
+  isLoading.value = true
+  try {
+    // 백엔드: GET /api/v1/houses/{aptSeq}
+    const houseResponse = await api.get(`/houses/${aptSeq}`)
+    const houseDto = houseResponse.data.data || houseResponse.data
+    
+    // 거래 내역 조회
+    let deals = []
+    try {
+      const dealsResponse = await api.get(`/houses/${aptSeq}/deals`)
+      deals = dealsResponse.data.data || dealsResponse.data || []
+    } catch (dealsError) {
+      console.warn('거래 내역 조회 실패:', dealsError)
+    }
+    
+    // 백엔드 DTO를 프론트엔드 형식으로 변환
+    estate.value = mapHouseDtoToEstate(houseDto, deals)
+  } catch (error) {
+    console.error('매물 상세 조회 실패:', error)
+    alert('매물 정보를 불러올 수 없습니다.')
+  } finally {
+    isLoading.value = false
+  }
   
   // Load scraps
   await scrapStore.loadScraps()

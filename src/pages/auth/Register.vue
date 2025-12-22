@@ -94,7 +94,8 @@ const handleRegister = async () => {
     alert('회원가입 성공! 로그인 페이지로 이동합니다.')
     router.push('/login')
   } catch (error) {
-    alert('회원가입 실패: 잠시 후 다시 시도해주세요.')
+    const errorMessage = error.message || '회원가입 실패: 잠시 후 다시 시도해주세요.'
+    alert(errorMessage)
   } finally {
     isLoading.value = false
   }

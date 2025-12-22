@@ -87,15 +87,30 @@ const updateProfile = async () => {
       payload.password = password.value
     }
 
-    const res = await api.put('/profile/edit', payload)
+    // 백엔드: PUT /api/v1/profile/edit
+    await api.put('/profile/edit', payload)
     
-    // Mock API returns updated user, need to update store
-    if (res.data.success) {
-      // Manually update store for mock
-      authStore.user = res.data.data
-      localStorage.setItem('user', JSON.stringify(res.data.data))
+    // 수정 후 프로필 정보 다시 조회
+    try {
+      const profileResponse = await api.get('/user/profile')
+      const userData = profileResponse.data.data || profileResponse.data
+      
+      const mappedUser = {
+        id: userData.userId,
+        userId: userData.userId,
+        email: userData.email,
+        nickname: userData.nickname,
+        phone: userData.phone
+      }
+      
+      authStore.user = mappedUser
+      localStorage.setItem('user', JSON.stringify(mappedUser))
       
       alert('성공적으로 수정되었습니다.')
+      router.push('/mypage')
+    } catch (profileError) {
+      console.warn('수정 후 프로필 조회 실패:', profileError)
+      alert('수정은 완료되었지만 프로필 정보를 다시 불러오지 못했습니다.')
       router.push('/mypage')
     }
   } catch (error) {

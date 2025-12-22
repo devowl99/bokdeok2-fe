@@ -73,20 +73,41 @@ const handleDeleteAccount = async () => {
   if (!confirm('정말로 탈퇴하시겠습니까? 데이터는 복구할 수 없습니다.')) return
 
   try {
+    // 백엔드: DELETE /api/v1/profile
     await api.delete('/profile')
     authStore.logout()
     alert('탈퇴가 완료되었습니다. 이용해주셔서 감사합니다.')
     router.push('/')
   } catch (error) {
     console.error(error)
-    alert('탈퇴 처리 중 오류가 발생했습니다.')
+    const errorMessage = error.response?.data?.message || error.response?.data?.data || '탈퇴 처리 중 오류가 발생했습니다.'
+    alert(errorMessage)
   }
 }
 
-onMounted(() => {
-  // Sync Profile
-  // In a real app, calls await api.get('/profile') and updates store
-  scrapStore.loadScraps()
+onMounted(async () => {
+  // 프로필 정보 동기화
+  if (authStore.isAuthenticated) {
+    try {
+      const response = await api.get('/user/profile')
+      const userData = response.data.data || response.data
+      
+      // 사용자 정보 업데이트
+      const mappedUser = {
+        id: userData.userId,
+        userId: userData.userId,
+        email: userData.email,
+        nickname: userData.nickname,
+        phone: userData.phone
+      }
+      authStore.user = mappedUser
+      localStorage.setItem('user', JSON.stringify(mappedUser))
+    } catch (error) {
+      console.warn('프로필 정보 조회 실패:', error)
+    }
+  }
+  
+  await scrapStore.loadScraps()
 })
 </script>
 
