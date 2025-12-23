@@ -63,7 +63,10 @@ export function mapHouseDtoToEstate(houseDto, deals = []) {
     buildYear: houseDto.buildYear,
     jibun: houseDto.jibun,
     roadNm: houseDto.roadNm,
-    umdNm: houseDto.umdNm
+    umdNm: houseDto.umdNm,
+    // 🔍 디버깅용: 지역 코드
+    sggCd: houseDto.sggCd,
+    umdCd: houseDto.umdCd
   }
 }
 

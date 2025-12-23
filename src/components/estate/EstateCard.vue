@@ -3,6 +3,7 @@
     <div class="estate-info">
       <h4 class="estate-title">{{ estate.title }}</h4>
       <p class="estate-price">{{ formattedPrice }}</p>
+      <p v-if="formattedArea" class="estate-area">{{ formattedArea }}</p>
       <p class="estate-desc">{{ estate.type }} | {{ estate.desc }}</p>
       <p v-if="dealInfo" class="estate-deal-info">{{ formattedDealInfo }}</p>
     </div>
@@ -59,6 +60,14 @@ const formattedPrice = computed(() => {
 
 const dealInfo = computed(() => props.estate.dealInfo)
 
+// 면적 강조 표시 (가격 아래)
+const formattedArea = computed(() => {
+  if (!dealInfo.value || !dealInfo.value.area) return ''
+  // m²를 평으로 변환 (1평 ≈ 3.3m²)
+  const pyeong = (dealInfo.value.area / 3.3).toFixed(1)
+  return `${dealInfo.value.area}㎡ (${pyeong}평)`
+})
+
 const formattedDealInfo = computed(() => {
   if (!dealInfo.value) return ''
   
@@ -67,11 +76,6 @@ const formattedDealInfo = computed(() => {
   // 거래일
   if (dealInfo.value.year && dealInfo.value.month && dealInfo.value.day) {
     parts.push(`${dealInfo.value.year}.${String(dealInfo.value.month).padStart(2, '0')}.${String(dealInfo.value.day).padStart(2, '0')}`)
-  }
-  
-  // 면적
-  if (dealInfo.value.area) {
-    parts.push(`${dealInfo.value.area}㎡`)
   }
   
   // 층수
@@ -145,7 +149,15 @@ const formattedDealInfo = computed(() => {
   font-size: 1.2rem;
   font-weight: 800;
   color: var(--primary-color);
+  margin-bottom: 4px;
+}
+
+.estate-area {
+  font-size: 1.0rem;
+  font-weight: 700;
+  color: var(--primary-color);
   margin-bottom: 6px;
+  opacity: 0.9;
 }
 
 .estate-desc {

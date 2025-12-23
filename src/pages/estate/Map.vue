@@ -3,7 +3,7 @@
     <Header class="map-header" />
     <div class="content-container">
       <!-- Sidebar / List -->
-      <aside class="sidebar" :class="{ 'has-estates-list': (selectedGugun || selectedDong) && estates.length > 0 }">
+      <aside class="sidebar" :class="{ 'has-estates-list': (selectedSido || selectedGugun || selectedDong) && estates.length > 0 }">
         <div class="sidebar-header">
           <h3>실거래가 리스트</h3>
           <span class="count">
@@ -19,11 +19,25 @@
         </div>
         <div class="location-filter">
           <div class="filter-row">
+            <label>시/도</label>
+            <select 
+              v-model="selectedSido" 
+              @change="onSidoChange" 
+              class="location-select"
+            >
+              <option value="">전체</option>
+              <option v-for="sido in sidoList" :key="sido" :value="sido">
+                {{ sido }}
+              </option>
+            </select>
+          </div>
+          <div class="filter-row">
             <label>시/군/구</label>
             <select 
               v-model="selectedGugun" 
               @change="onGugunChange" 
               class="location-select"
+              :disabled="!selectedSido"
             >
               <option value="">전체</option>
               <option v-for="gugun in gugunList" :key="gugun" :value="gugun">
@@ -55,7 +69,7 @@
         <div class="estate-list">
           <div v-if="isLoading" class="loading-message">매물을 불러오는 중...</div>
           <!-- 필터링이 선택된 경우에만 매물 목록 표시 -->
-          <template v-if="selectedGugun || selectedDong">
+          <template v-if="selectedSido || selectedGugun || selectedDong">
             <EstateCard
               v-for="estate in estates"
               :key="estate.id"
@@ -76,6 +90,11 @@
         <div class="filter-panel-header">
           <h4>상세 옵션</h4>
           <button class="close-button" @click="toggleFilterPanel">×</button>
+        </div>
+        
+        <!-- 로딩 메시지 -->
+        <div v-if="isLoading" class="filter-loading-message">
+          옵션을 적용하는 중...
         </div>
         
         <!-- 가격대 필터 -->
@@ -206,8 +225,10 @@ const isLoading = ref(false)
 const totalCount = ref(null) // 전체 매물 개수 (초기 로드 시)
 
 // 지역 필터링 관련
+const sidoList = ref([]) // 시/도 목록
 const gugunList = ref([]) // 시/군/구 목록
 const dongList = ref([]) // 읍/면/동 목록
+const selectedSido = ref('') // 선택된 시/도
 const selectedGugun = ref('') // 선택된 시/군/구
 const selectedDong = ref('') // 선택된 읍/면/동
 const aiSearchQuery = ref('') // AI 검색어
@@ -219,10 +240,28 @@ const maxArea = ref(500) // 최대 면적 (㎡) - 기본값: 500㎡
 const areaRangeMax = 500 // 슬라이더 최대값 (500㎡)
 const isFilterPanelOpen = ref(false) // 필터 패널 열림 상태
 
-// 시/군/구 목록 조회
-const fetchGugunList = async () => {
+// 시/도 목록 조회
+const fetchSidoList = async () => {
   try {
-    const response = await api.get('/houses/gugun')
+    const response = await api.get('/houses/sido')
+    sidoList.value = response.data.data || response.data || []
+  } catch (error) {
+    console.error('시/도 목록 조회 실패:', error)
+    sidoList.value = []
+  }
+}
+
+// 시/군/구 목록 조회 (시/도로 필터링)
+const fetchGugunList = async (sidoName) => {
+  if (!sidoName) {
+    gugunList.value = []
+    return
+  }
+  
+  try {
+    const response = await api.get('/houses/gugun', {
+      params: { sidoName }
+    })
     gugunList.value = response.data.data || response.data || []
   } catch (error) {
     console.error('시/군/구 목록 조회 실패:', error)
@@ -230,16 +269,22 @@ const fetchGugunList = async () => {
   }
 }
 
-// 읍/면/동 목록 조회
-const fetchDongList = async (gugunName) => {
+// 읍/면/동 목록 조회 (시/도와 시/군/구로 필터링)
+const fetchDongList = async (sidoName, gugunName) => {
   if (!gugunName) {
     dongList.value = []
     return
   }
   
   try {
-    const response = await api.get(`/houses/dong/gugun/${encodeURIComponent(gugunName)}`)
-    dongList.value = response.data.data || response.data || []
+    if (sidoName) {
+      const response = await api.get(`/houses/dong/sido/${encodeURIComponent(sidoName)}/gugun/${encodeURIComponent(gugunName)}`)
+      dongList.value = response.data.data || response.data || []
+    } else {
+      // 하위 호환성을 위해 sidoName이 없으면 기존 방식 사용
+      const response = await api.get(`/houses/dong/gugun/${encodeURIComponent(gugunName)}`)
+      dongList.value = response.data.data || response.data || []
+    }
   } catch (error) {
     console.error('읍/면/동 목록 조회 실패:', error)
     dongList.value = []
@@ -251,13 +296,17 @@ const fetchTotalCount = async (params = {}) => {
   try {
     const searchParams = { ...params }
     
+    // 시/도 선택된 경우
+    if (selectedSido.value && !params.sidoName) {
+      searchParams.sidoName = selectedSido.value
+    }
+    // 시/군/구 선택된 경우
+    if (selectedGugun.value && !params.gugunName) {
+      searchParams.gugunName = selectedGugun.value
+    }
     // 읍/면/동이 선택된 경우
     if (selectedDong.value && !params.umdNm) {
       searchParams.umdNm = selectedDong.value
-    }
-    // 시/군/구만 선택된 경우
-    else if (selectedGugun.value && !selectedDong.value && !params.gugunName) {
-      searchParams.gugunName = selectedGugun.value
     }
     
     // 가격대 필터 추가
@@ -291,15 +340,22 @@ const fetchEstates = async (params = {}) => {
   try {
     const searchParams = { ...params }
     
+    // 시/도 선택된 경우
+    if (selectedSido.value && !params.sidoName) {
+      searchParams.sidoName = selectedSido.value
+    }
+    // 시/군/구 선택된 경우
+    if (selectedGugun.value && !params.gugunName) {
+      searchParams.gugunName = selectedGugun.value
+    }
     // 읍/면/동이 선택된 경우 (필터링 있음 - limit 없음)
     if (selectedDong.value && !params.umdNm) {
       searchParams.umdNm = selectedDong.value
       // 필터링된 결과는 모두 가져오기 (limit 제거)
       delete searchParams.limit
     }
-    // 시/군/구만 선택된 경우 (읍/면/동이 "전체"인 경우) - 필터링 있음
-    else if (selectedGugun.value && !selectedDong.value && !params.gugunName) {
-      searchParams.gugunName = selectedGugun.value
+    // 시/도 또는 시/군/구만 선택된 경우 (읍/면/동이 "전체"인 경우) - 필터링 있음
+    else if ((selectedSido.value || selectedGugun.value) && !selectedDong.value) {
       // 필터링된 결과는 모두 가져오기 (limit 제거)
       delete searchParams.limit
     }
@@ -352,6 +408,27 @@ const fetchEstates = async (params = {}) => {
   }
 }
 
+// 시/도 변경 핸들러
+const onSidoChange = async () => {
+  // 시/군/구와 읍/면/동 리셋
+  selectedGugun.value = ''
+  selectedDong.value = ''
+  gugunList.value = []
+  dongList.value = []
+  estates.value = [] // 매물 목록 초기화
+  
+  // 선택된 시/도의 시/군/구 목록 조회
+  if (selectedSido.value) {
+    await fetchGugunList(selectedSido.value)
+    // 시/도 선택 시 해당 시/도의 매물 검색 (필터링 있음 - 실제 데이터 조회)
+    await fetchEstates({ sidoName: selectedSido.value })
+  } else {
+    // 전체 선택 시 - 개수만 조회하고 데이터는 가져오지 않음
+    estates.value = []
+    await fetchTotalCount()
+  }
+}
+
 // 시/군/구 변경 핸들러
 const onGugunChange = async () => {
   // 읍/면/동 리셋
@@ -361,13 +438,21 @@ const onGugunChange = async () => {
   
   // 선택된 시/군/구의 읍/면/동 목록 조회
   if (selectedGugun.value) {
-    await fetchDongList(selectedGugun.value)
+    await fetchDongList(selectedSido.value, selectedGugun.value)
     // 시/군/구 선택 시 해당 시/군/구의 매물 검색 (필터링 있음 - 실제 데이터 조회)
-    await fetchEstates({ gugunName: selectedGugun.value })
+    const searchParams = { gugunName: selectedGugun.value }
+    if (selectedSido.value) {
+      searchParams.sidoName = selectedSido.value
+    }
+    await fetchEstates(searchParams)
   } else {
-    // 전체 선택 시 - 개수만 조회하고 데이터는 가져오지 않음
-    estates.value = []
-    await fetchTotalCount()
+    // 전체 선택 시 - 시/도만 선택된 경우 해당 시/도 검색, 아니면 개수만 조회
+    if (selectedSido.value) {
+      await fetchEstates({ sidoName: selectedSido.value })
+    } else {
+      estates.value = []
+      await fetchTotalCount()
+    }
   }
 }
 
@@ -375,11 +460,24 @@ const onGugunChange = async () => {
 const onDongChange = () => {
   if (selectedDong.value) {
     // 특정 읍/면/동 선택 시 (필터링 있음 - 실제 데이터 조회)
-    fetchEstates({ umdNm: selectedDong.value })
-  } else {
-    // "전체" 선택 시 (시/군/구 전체 - 실제 데이터 조회)
+    const searchParams = { umdNm: selectedDong.value }
     if (selectedGugun.value) {
-      fetchEstates({ gugunName: selectedGugun.value })
+      searchParams.gugunName = selectedGugun.value
+    }
+    if (selectedSido.value) {
+      searchParams.sidoName = selectedSido.value
+    }
+    fetchEstates(searchParams)
+  } else {
+    // "전체" 선택 시
+    if (selectedGugun.value) {
+      const searchParams = { gugunName: selectedGugun.value }
+      if (selectedSido.value) {
+        searchParams.sidoName = selectedSido.value
+      }
+      fetchEstates(searchParams)
+    } else if (selectedSido.value) {
+      fetchEstates({ sidoName: selectedSido.value })
     } else {
       // 아무것도 선택 안 된 경우 - 개수만 조회
       estates.value = []
@@ -391,12 +489,12 @@ const onDongChange = () => {
 // 가격대 변경 핸들러
 const onPriceChange = () => {
   // 지역 필터가 있는 경우에만 검색
-  if (selectedGugun.value || selectedDong.value) {
-    if (selectedDong.value) {
-      fetchEstates({ umdNm: selectedDong.value })
-    } else if (selectedGugun.value) {
-      fetchEstates({ gugunName: selectedGugun.value })
-    }
+  if (selectedSido.value || selectedGugun.value || selectedDong.value) {
+    const searchParams = {}
+    if (selectedSido.value) searchParams.sidoName = selectedSido.value
+    if (selectedGugun.value) searchParams.gugunName = selectedGugun.value
+    if (selectedDong.value) searchParams.umdNm = selectedDong.value
+    fetchEstates(searchParams)
   }
 }
 
@@ -413,12 +511,12 @@ const onAreaInput = () => {
 // 평수 변경 핸들러 (슬라이더 드래그 종료)
 const onAreaChange = () => {
   // 지역 필터가 있는 경우에만 검색
-  if (selectedGugun.value || selectedDong.value) {
-    if (selectedDong.value) {
-      fetchEstates({ umdNm: selectedDong.value })
-    } else if (selectedGugun.value) {
-      fetchEstates({ gugunName: selectedGugun.value })
-    }
+  if (selectedSido.value || selectedGugun.value || selectedDong.value) {
+    const searchParams = {}
+    if (selectedSido.value) searchParams.sidoName = selectedSido.value
+    if (selectedGugun.value) searchParams.gugunName = selectedGugun.value
+    if (selectedDong.value) searchParams.umdNm = selectedDong.value
+    fetchEstates(searchParams)
   }
 }
 
@@ -443,8 +541,8 @@ const clearAISearch = () => {
 onMounted(async () => {
   await scrapStore.loadScraps()
   
-  // 시/군/구 목록 로드
-  await fetchGugunList()
+  // 시/도 목록 로드
+  await fetchSidoList()
   
   // URL 쿼리에서 AI 검색어 확인
   if (route.query.q) {
@@ -761,6 +859,52 @@ const closeModal = () => {
   font-size: 1.1rem;
   font-weight: 700;
   color: var(--text-main);
+}
+
+/* 필터 패널 로딩 메시지 */
+.filter-loading-message {
+  padding: 16px 24px;
+  text-align: center;
+  color: var(--primary-color);
+  font-size: 0.9rem;
+  font-weight: 600;
+  background: rgba(108, 92, 231, 0.05);
+  border-top: 1px solid rgba(108, 92, 231, 0.1);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* 매물 목록 로딩 메시지 */
+.loading-message {
+  padding: 20px;
+  text-align: center;
+  color: var(--primary-color);
+  font-size: 0.95rem;
+  font-weight: 600;
+  background: rgba(108, 92, 231, 0.05);
+  border-radius: 12px;
+  margin: 20px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* 매물 없음 메시지 */
+.empty-message {
+  padding: 20px;
+  text-align: center;
+  color: var(--primary-color);
+  font-size: 0.95rem;
+  font-weight: 600;
+  background: rgba(108, 92, 231, 0.05);
+  border-radius: 12px;
+  margin: 20px;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
 }
 
 .close-button {

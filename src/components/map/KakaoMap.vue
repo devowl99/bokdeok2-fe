@@ -117,6 +117,23 @@ const addMarkers = (estates) => {
       return
     }
 
+    // 🔍 데이터 품질 체크: 지역 코드와 좌표가 일치하는지 검증
+    const lat = estate.location.lat
+    const lng = estate.location.lng
+    const sggCdPrefix = estate.sggCd ? estate.sggCd.substring(0, 2) : null
+    
+    // 부산(26)인데 서울 좌표 범위에 있는 경우 제외
+    if (sggCdPrefix === '26' && lat >= 37.4 && lat <= 37.7 && lng >= 126.8 && lng <= 127.2) {
+      console.warn('⚠️ 좌표 오류: 부산 코드인데 서울 좌표 -', estate.id, estate.sggCd, lat, lng)
+      return
+    }
+    
+    // 서울(11)인데 부산 좌표 범위에 있는 경우 제외
+    if (sggCdPrefix === '11' && lat >= 35.0 && lat <= 35.5 && lng >= 128.9 && lng <= 129.3) {
+      console.warn('⚠️ 좌표 오류: 서울 코드인데 부산 좌표 -', estate.id, estate.sggCd, lat, lng)
+      return
+    }
+
     // 마커 생성
     const markerPosition = new window.kakao.maps.LatLng(
       estate.location.lat,
@@ -126,6 +143,26 @@ const addMarkers = (estates) => {
     const marker = new window.kakao.maps.Marker({
       position: markerPosition,
       map: map.value
+    })
+
+    // 🔍 디버깅: 동 코드 표시 (sgg_cd + umd_cd)
+    const dongCode = (estate.sggCd || '?????') + (estate.umdCd || '?????')
+    const customOverlay = new window.kakao.maps.CustomOverlay({
+      position: markerPosition,
+      content: `<div style="
+        background: rgba(0, 0, 0, 0.8);
+        color: #00ff00;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 9px;
+        font-weight: bold;
+        white-space: nowrap;
+        pointer-events: none;
+        border: 1px solid rgba(0, 255, 0, 0.5);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      ">${dongCode}</div>`,
+      map: map.value,
+      yAnchor: 1.8
     })
 
     // 정보창 생성
@@ -143,6 +180,7 @@ const addMarkers = (estates) => {
     })
 
     markers.value.push(marker)
+    markers.value.push(customOverlay) // 오버레이도 마커처럼 관리
     infoWindows.value.push(infoWindow)
   })
 
@@ -195,7 +233,13 @@ const createInfoWindowContent = (estate) => {
 
 // 마커 제거 함수
 const removeMarkers = () => {
-  markers.value.forEach(marker => marker.setMap(null))
+  markers.value.forEach((marker) => {
+    if (marker.setMap) {
+      marker.setMap(null) // Marker
+    } else if (marker.setVisible) {
+      marker.setVisible(false) // CustomOverlay
+    }
+  })
   infoWindows.value.forEach(infoWindow => infoWindow.close())
   markers.value = []
   infoWindows.value = []
@@ -209,8 +253,13 @@ const moveMap = (lat, lng) => {
 
 // estates가 변경될 때 마커 업데이트
 watch(() => props.estates, (newEstates) => {
-  if (map.value && newEstates.length > 0) {
+  if (!map.value) return
+  
+  if (newEstates.length > 0) {
     addMarkers(newEstates)
+  } else {
+    // 매물이 없으면 마커 제거
+    removeMarkers()
   }
 }, { deep: true })
 
