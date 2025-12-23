@@ -36,7 +36,7 @@
           <input 
             v-model="password" 
             type="password" 
-            placeholder="비밀번호 (8자 이상)" 
+            placeholder="비밀번호를 입력하세요" 
             required 
           />
         </div>

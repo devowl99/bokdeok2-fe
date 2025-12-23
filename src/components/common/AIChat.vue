@@ -63,12 +63,8 @@ const setQuery = (text) => {
 const handleSearch = () => {
   if (!query.value.trim()) return
   
-  // TODO: Call AI API or Navigate to Map with query
-  console.log('Searching for:', query.value)
-  alert(`AI 검색 시작: "${query.value}"\n(결과 페이지로 이동합니다)`)
-  
-  // Mock navigation
-  router.push({ name: 'Map', query: { q: query.value } }) // Creating Map route might be needed
+  // 지도 페이지로 이동 (AI 검색은 추후 구현)
+  router.push({ name: 'Map', query: { q: query.value } })
 }
 </script>
 
@@ -82,6 +78,7 @@ const handleSearch = () => {
   background: transparent; /* Changed to transparent to show blobs */
   width: 100%;
   z-index: 1;
+  transform: translateY(-40px); /* 요소들을 위로 올림 */
 }
 
 .content-wrapper {

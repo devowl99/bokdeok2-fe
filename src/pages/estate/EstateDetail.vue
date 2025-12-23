@@ -26,6 +26,18 @@
             <span class="label">위치</span>
             <span class="value">{{ estate.address }}</span>
           </div>
+          <div v-if="estate.dealInfo?.year" class="meta-item">
+            <span class="label">거래일</span>
+            <span class="value">{{ formatDealDate(estate.dealInfo) }}</span>
+          </div>
+          <div v-if="estate.dealInfo?.area" class="meta-item">
+            <span class="label">전용면적</span>
+            <span class="value">{{ formatArea(estate.dealInfo.area) }}</span>
+          </div>
+          <div v-if="estate.dealInfo?.floor" class="meta-item">
+            <span class="label">층수</span>
+            <span class="value">{{ estate.dealInfo.floor }}층</span>
+          </div>
         </div>
 
         <div class="description-box">
@@ -74,8 +86,35 @@ const isScrapped = computed(() => {
 
 const formatPrice = (price) => {
   if (!price) return ''
-  if (price.purchase) return `매매 ${price.purchase / 10000}억`
+  if (price.purchase) {
+    const purchaseAmount = price.purchase // 만원 단위
+    if (purchaseAmount >= 10000) {
+      const eok = Math.floor(purchaseAmount / 10000)
+      const cheonman = Math.floor((purchaseAmount % 10000) / 1000)
+      if (cheonman > 0) {
+        return `매매 ${eok}억 ${cheonman}천만원`
+      }
+      return `매매 ${eok}억원`
+    } else if (purchaseAmount >= 1000) {
+      const cheonman = Math.floor(purchaseAmount / 1000)
+      return `매매 ${cheonman}천만원`
+    } else {
+      return `매매 ${purchaseAmount}만원`
+    }
+  }
   return `보증금 ${price.deposit} / 월 ${price.monthly}`
+}
+
+const formatDealDate = (dealInfo) => {
+  if (!dealInfo || !dealInfo.year || !dealInfo.month || !dealInfo.day) return '-'
+  return `${dealInfo.year}.${String(dealInfo.month).padStart(2, '0')}.${String(dealInfo.day).padStart(2, '0')}`
+}
+
+const formatArea = (area) => {
+  if (!area) return '-'
+  // m²를 평으로 변환 (1평 ≈ 3.3m²)
+  const pyeong = (area / 3.3).toFixed(1)
+  return `${area}㎡ (${pyeong}평)`
 }
 
 const toggleScrap = async () => {
@@ -197,27 +236,43 @@ onMounted(async () => {
 
 .meta-info {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 24px;
   margin-bottom: 40px;
+  padding: 24px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+  border-radius: 16px;
+  border: 1px solid rgba(108, 92, 231, 0.1);
 }
 
 .meta-item {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+  padding: 16px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.meta-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .label {
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   color: var(--text-sub);
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .value {
-  font-size: 1.1rem;
+  font-size: 1.15rem;
   color: var(--text-main);
-  font-weight: 500;
+  font-weight: 700;
 }
 
 .description-box {
