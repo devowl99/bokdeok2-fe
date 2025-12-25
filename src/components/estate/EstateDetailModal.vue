@@ -177,12 +177,13 @@ watch(() => props.estateId, async (newId) => {
   }
 }, { immediate: true })
 
-// Load scraps when modal opens
-watch(() => props.isOpen, async (isOpen) => {
-  if (isOpen) {
-    await scrapStore.loadScraps()
-  }
-})
+// 모달이 열릴 때 스크랩 로드하지 않음
+// (이미 메모리에 스크랩 정보가 있으므로, 매번 로드하면 최신 변경사항이 덮어씌워질 수 있음)
+// watch(() => props.isOpen, async (isOpen) => {
+//   if (isOpen) {
+//     await scrapStore.loadScraps()
+//   }
+// })
 </script>
 
 <style scoped>

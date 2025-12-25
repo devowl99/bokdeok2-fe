@@ -145,26 +145,6 @@ const addMarkers = (estates) => {
       map: map.value
     })
 
-    // 🔍 디버깅: 동 코드 표시 (sgg_cd + umd_cd)
-    const dongCode = (estate.sggCd || '?????') + (estate.umdCd || '?????')
-    const customOverlay = new window.kakao.maps.CustomOverlay({
-      position: markerPosition,
-      content: `<div style="
-        background: rgba(0, 0, 0, 0.8);
-        color: #00ff00;
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-size: 9px;
-        font-weight: bold;
-        white-space: nowrap;
-        pointer-events: none;
-        border: 1px solid rgba(0, 255, 0, 0.5);
-        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-      ">${dongCode}</div>`,
-      map: map.value,
-      yAnchor: 1.8
-    })
-
     // 정보창 생성
     const infoWindow = new window.kakao.maps.InfoWindow({
       content: createInfoWindowContent(estate),
@@ -180,7 +160,6 @@ const addMarkers = (estates) => {
     })
 
     markers.value.push(marker)
-    markers.value.push(customOverlay) // 오버레이도 마커처럼 관리
     infoWindows.value.push(infoWindow)
   })
 

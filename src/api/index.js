@@ -17,6 +17,11 @@ api.interceptors.request.use(
             config.headers.Authorization = `Bearer ${token}`
         }
         
+        // AI 엔드포인트(/llm)는 처리 시간이 오래 걸리므로 타임아웃을 더 길게 설정
+        if (config.url && config.url.includes('/llm')) {
+            config.timeout = 60000 // 60초 (AI 응답 대기)
+        }
+        
         console.log(`[API Request] ${config.method.toUpperCase()} ${config.url}`, config.params || config.data)
         return config
     },

@@ -78,6 +78,10 @@ export const useScrapStore = defineStore('scrap', () => {
 
         // 메모리 상태 먼저 변경 (즉시 UI 반영)
         const wasScrapped = scraps.value.has(estateId)
+        
+        // 현재 스크랩 목록 복사 (디버깅용)
+        const beforeScraps = [...scraps.value]
+        
         if (wasScrapped) {
             scraps.value.delete(estateId)
         } else {
@@ -98,6 +102,14 @@ export const useScrapStore = defineStore('scrap', () => {
             await api.post(`/houses/${estateId}/scrap`, null, { 
                 params: { userId } 
             })
+            
+            // API 성공 후 현재 스크랩 목록 확인
+            console.log(`스크랩 토글 성공: ${estateId}`, {
+                wasScrapped,
+                before: beforeScraps,
+                after: [...scraps.value]
+            })
+            
             return true
         } catch (error) {
             console.warn('스크랩 API 호출 실패:', error)

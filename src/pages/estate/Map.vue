@@ -3,7 +3,7 @@
     <Header class="map-header" />
     <div class="content-container">
       <!-- Sidebar / List -->
-      <aside class="sidebar" :class="{ 'has-estates-list': (selectedSido || selectedGugun || selectedDong) && estates.length > 0 }">
+      <aside class="sidebar" :class="{ 'has-estates-list': (isAISearchResult || selectedSido || selectedGugun || selectedDong) && estates.length > 0 }">
         <div class="sidebar-header">
           <h3>실거래가 리스트</h3>
           <span class="count">
@@ -11,6 +11,7 @@
             <span v-else>{{ estates.length }}건</span>
           </span>
         </div>
+        
         <!-- AI 검색어 표시 -->
         <div v-if="aiSearchQuery" class="ai-search-badge">
           <span class="ai-icon">✨</span>
@@ -68,8 +69,8 @@
         </div>
         <div class="estate-list">
           <div v-if="isLoading" class="loading-message">매물을 불러오는 중...</div>
-          <!-- 필터링이 선택된 경우에만 매물 목록 표시 -->
-          <template v-if="selectedSido || selectedGugun || selectedDong">
+          <!-- AI 검색 결과이거나 지역 필터가 선택된 경우 매물 목록 표시 -->
+          <template v-if="isAISearchResult || selectedSido || selectedGugun || selectedDong">
             <EstateCard
               v-for="estate in estates"
               :key="estate.id"
@@ -82,6 +83,11 @@
               매물이 없습니다.
             </div>
           </template>
+        </div>
+        
+        <!-- AI 검색 버튼 (사이드바 오른쪽 아래) -->
+        <div class="sidebar-ai-search">
+          <FloatingAIChat @search-result="handleAISearchResult" />
         </div>
       </aside>
       
@@ -189,7 +195,6 @@
           :estates="estates" 
           @marker-detail-click="goToDetail"
         />
-        <FloatingAIChat />
       </main>
     </div>
 
@@ -232,6 +237,8 @@ const selectedSido = ref('') // 선택된 시/도
 const selectedGugun = ref('') // 선택된 시/군/구
 const selectedDong = ref('') // 선택된 읍/면/동
 const aiSearchQuery = ref('') // AI 검색어
+const isAISearchResult = ref(false) // AI 검색 결과인지 여부
+const originalAIEstates = ref([]) // AI 검색 결과 원본 (필터링 전)
 const minPrice = ref(10000) // 최소 가격 (만원 단위) - 기본값: 천만원
 const maxPrice = ref(1000000) // 최대 가격 (만원 단위) - 기본값: 100억
 const priceRangeMax = 1000000 // 슬라이더 최대값 (100억)
@@ -410,6 +417,10 @@ const fetchEstates = async (params = {}) => {
 
 // 시/도 변경 핸들러
 const onSidoChange = async () => {
+  // AI 검색 결과 플래그 리셋 (일반 필터 사용 시)
+  isAISearchResult.value = false
+  originalAIEstates.value = [] // 원본도 초기화
+  
   // 시/군/구와 읍/면/동 리셋
   selectedGugun.value = ''
   selectedDong.value = ''
@@ -431,6 +442,10 @@ const onSidoChange = async () => {
 
 // 시/군/구 변경 핸들러
 const onGugunChange = async () => {
+  // AI 검색 결과 플래그 리셋 (일반 필터 사용 시)
+  isAISearchResult.value = false
+  originalAIEstates.value = [] // 원본도 초기화
+  
   // 읍/면/동 리셋
   selectedDong.value = ''
   dongList.value = []
@@ -458,6 +473,10 @@ const onGugunChange = async () => {
 
 // 읍/면/동 변경 핸들러
 const onDongChange = () => {
+  // AI 검색 결과 플래그 리셋 (일반 필터 사용 시)
+  isAISearchResult.value = false
+  originalAIEstates.value = [] // 원본도 초기화
+  
   if (selectedDong.value) {
     // 특정 읍/면/동 선택 시 (필터링 있음 - 실제 데이터 조회)
     const searchParams = { umdNm: selectedDong.value }
@@ -488,6 +507,12 @@ const onDongChange = () => {
 
 // 가격대 변경 핸들러
 const onPriceChange = () => {
+  // AI 검색 결과인 경우 클라이언트 사이드 필터링
+  if (isAISearchResult.value) {
+    applyAIFilters()
+    return
+  }
+  
   // 지역 필터가 있는 경우에만 검색
   if (selectedSido.value || selectedGugun.value || selectedDong.value) {
     const searchParams = {}
@@ -510,6 +535,12 @@ const onAreaInput = () => {
 
 // 평수 변경 핸들러 (슬라이더 드래그 종료)
 const onAreaChange = () => {
+  // AI 검색 결과인 경우 클라이언트 사이드 필터링
+  if (isAISearchResult.value) {
+    applyAIFilters()
+    return
+  }
+  
   // 지역 필터가 있는 경우에만 검색
   if (selectedSido.value || selectedGugun.value || selectedDong.value) {
     const searchParams = {}
@@ -534,7 +565,10 @@ const fetchRecommendations = async (query) => {
 // AI 검색어 제거
 const clearAISearch = () => {
   aiSearchQuery.value = ''
-  router.push({ name: 'Map' })
+  isAISearchResult.value = false
+  originalAIEstates.value = [] // 원본도 초기화
+  estates.value = []
+  totalCount.value = null
 }
 
 // Load scraps on mount
@@ -543,6 +577,19 @@ onMounted(async () => {
   
   // 시/도 목록 로드
   await fetchSidoList()
+  
+  // sessionStorage에서 AI 검색 결과 확인 (메인 페이지에서 전달된 경우)
+  const aiSearchResults = sessionStorage.getItem('aiSearchResults')
+  if (aiSearchResults) {
+    try {
+      const listings = JSON.parse(aiSearchResults)
+      handleAISearchResult(listings)
+      sessionStorage.removeItem('aiSearchResults') // 사용 후 제거
+    } catch (error) {
+      console.error('AI 검색 결과 파싱 실패:', error)
+      sessionStorage.removeItem('aiSearchResults')
+    }
+  }
   
   // URL 쿼리에서 AI 검색어 확인
   if (route.query.q) {
@@ -607,6 +654,74 @@ const moveToEstatesCenter = () => {
   
   // 지도 이동
   moveToLocation(avgLat, avgLng)
+}
+
+// AI 검색 결과 처리
+const handleAISearchResult = (listings) => {
+  try {
+    // AI 검색 결과 플래그 설정
+    isAISearchResult.value = true
+    
+    // listings를 estates 형식으로 변환
+    const mappedEstates = mapHouseDtosToEstates(listings)
+    
+    // 원본 저장 (필터링 전)
+    originalAIEstates.value = mappedEstates
+    
+    // 필터 적용하여 표시
+    applyAIFilters()
+    
+    // 지도 중심 이동 (매물들의 중심 좌표로)
+    if (estates.value.length > 0) {
+      setTimeout(() => {
+        moveToEstatesCenter()
+      }, 300)
+    }
+  } catch (error) {
+    console.error('AI 검색 결과 처리 실패:', error)
+  }
+}
+
+// AI 검색 결과에 필터 적용 (클라이언트 사이드)
+const applyAIFilters = () => {
+  if (!isAISearchResult.value || originalAIEstates.value.length === 0) {
+    return
+  }
+  
+  // 원본 결과를 필터링
+  let filtered = [...originalAIEstates.value]
+  
+  // 가격 필터 적용
+  if (minPrice.value > 0 || maxPrice.value < priceRangeMax) {
+    filtered = filtered.filter(estate => {
+      const price = estate.price?.purchase
+      if (!price) return false // 가격 정보가 없으면 제외
+      
+      const priceInManwon = price // 이미 만원 단위
+      return priceInManwon >= minPrice.value && priceInManwon <= maxPrice.value
+    })
+  }
+  
+  // 면적 필터 적용
+  if (minArea.value > 0 || maxArea.value < areaRangeMax) {
+    filtered = filtered.filter(estate => {
+      const area = estate.dealInfo?.area
+      if (!area) return false // 면적 정보가 없으면 제외
+      
+      return area >= minArea.value && area <= maxArea.value
+    })
+  }
+  
+  // 필터링된 결과 적용
+  estates.value = filtered
+  totalCount.value = filtered.length
+  
+  // 지도 업데이트 (필터링된 매물만 표시)
+  if (filtered.length > 0) {
+    setTimeout(() => {
+      moveToEstatesCenter()
+    }, 100)
+  }
 }
 
 const goToDetail = (id) => {
@@ -677,12 +792,14 @@ const closeModal = () => {
   /* 필터링 전 기본 높이 (헤더 + 필터링 영역만) - 자동 높이 */
   height: auto;
   min-height: fit-content;
+  padding-bottom: 30px; /* AI 검색 버튼 공간 확보 */
 }
 
 /* 매물이 있을 때 사이드바를 창 크기에 맞춰 확장 (하단 여백 추가로 지도가 보이도록) */
 .sidebar.has-estates-list {
   bottom: 100px; /* 하단에 100px 여백 추가 */
   height: calc(100vh - 120px); /* top 20px + bottom 100px */
+  padding-bottom: 0; /* 매물이 있을 때는 패딩 제거 */
 }
 
 .sidebar-header {
@@ -702,6 +819,80 @@ const closeModal = () => {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   letter-spacing: -0.5px;
+}
+
+.count {
+  color: white;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  box-shadow: 0 4px 10px rgba(108, 92, 231, 0.3);
+}
+
+/* AI 검색 버튼 (사이드바 오른쪽 아래) */
+.sidebar-ai-search {
+  position: absolute;
+  bottom: 15px;
+  right: 20px;
+  z-index: 20;
+}
+
+.sidebar-ai-search :deep(.floating-chat-wrapper) {
+  position: static !important;
+  align-items: flex-end;
+}
+
+.sidebar-ai-search :deep(.chat-toggle-btn) {
+  padding: 10px 16px;
+  font-size: 0.9rem;
+  border-radius: 18px;
+  white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(108, 92, 231, 0.35);
+}
+
+.sidebar-ai-search :deep(.chat-window) {
+  position: fixed;
+  top: auto;
+  bottom: 0px;
+  left: 382px;
+  right: auto;
+  width: 360px;
+  height: 450px;
+  max-height: calc(100vh - 0px);
+  margin-top: 0;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+  z-index: 100;
+}
+
+/* AI 검색 영역 (사이드바 내부) */
+.ai-search-section {
+  padding: 0 24px 16px 24px;
+  border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+
+.ai-search-section :deep(.floating-chat-wrapper) {
+  position: static !important;
+  width: 100%;
+  align-items: stretch;
+}
+
+.ai-search-section :deep(.chat-toggle-btn) {
+  width: 100%;
+  justify-content: center;
+  padding: 16px 20px;
+  border-radius: 16px;
+  font-size: 1rem;
+  box-shadow: 0 4px 16px rgba(108, 92, 231, 0.25);
+}
+
+.ai-search-section :deep(.chat-window) {
+  width: 100% !important;
+  height: 500px;
+  max-height: calc(100vh - 250px);
+  margin-top: 12px;
+  border-radius: 20px;
 }
 
 .ai-search-badge {
@@ -1128,9 +1319,44 @@ const closeModal = () => {
   box-shadow: 0 4px 10px rgba(108, 92, 231, 0.3);
 }
 
+/* AI 검색 버튼 (사이드바 오른쪽 아래) */
+.sidebar-ai-search {
+  position: absolute;
+  bottom: 15px;
+  right: 20px;
+  z-index: 20;
+}
+
+.sidebar-ai-search :deep(.floating-chat-wrapper) {
+  position: static !important;
+  align-items: flex-end;
+}
+
+.sidebar-ai-search :deep(.chat-toggle-btn) {
+  padding: 10px 16px;
+  font-size: 0.9rem;
+  border-radius: 18px;
+  white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(108, 92, 231, 0.35);
+}
+
+.sidebar-ai-search :deep(.chat-window) {
+  position: fixed;
+  top: auto;
+  bottom: 0px;
+  left: 382px;
+  right: auto;
+  width: 360px;
+  height: 450px;
+  max-height: calc(100vh - 0px);
+  margin-top: 0;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+  z-index: 100;
+}
+
 .estate-list {
   overflow-y: auto;
-  padding: 20px 20px 20px 20px; /* 상단 패딩 증가 (버튼 공간 확보) */
+  padding: 20px 20px 20px 20px;
   /* Hide scrollbar visually but allow scroll */
   scrollbar-width: thin;
   scrollbar-color: rgba(0,0,0,0.1) transparent;

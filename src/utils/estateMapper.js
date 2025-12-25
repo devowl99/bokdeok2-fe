@@ -38,13 +38,13 @@ export function mapHouseDtoToEstate(houseDto, deals = []) {
     month: houseDto.latestDealMonth,
     day: houseDto.latestDealDay,
     floor: houseDto.latestDealFloor,
-    area: houseDto.latestDealArea ? parseFloat(houseDto.latestDealArea) : null
+    area: houseDto.latestDealArea ? (typeof houseDto.latestDealArea === 'number' ? houseDto.latestDealArea : parseFloat(houseDto.latestDealArea)) : null
   } : (deals && deals.length > 0 ? {
     year: deals[0].dealYear,
     month: deals[0].dealMonth,
     day: deals[0].dealDay,
     floor: deals[0].floor,
-    area: deals[0].excluUseAr ? parseFloat(deals[0].excluUseAr) : null
+    area: deals[0].excluUseAr ? (typeof deals[0].excluUseAr === 'number' ? deals[0].excluUseAr : parseFloat(deals[0].excluUseAr)) : null
   } : null)
 
   return {
